@@ -11,8 +11,7 @@ def readGrammatic():
   global beginNonTerminal
 
   grammatic = {}
-  with open('grammatic.txt', 'r') as inputFile:
-    # for _ in range(2):
+  with open('grammatic2.txt', 'r') as inputFile:
     while inputFile:
       tmp = inputFile.readline().split('\n')[0].split(' ')
       if tmp == ['']:
@@ -22,10 +21,10 @@ def readGrammatic():
 
       grammatic[tmp[0]] = []
       currentValue = []
+      nonTerminals.add(tmp[0])
       for item in tmp[2:]:
         if item == '|':
           grammatic[tmp[0]].append(currentValue[:])
-          nonTerminals.add(tmp[0])
           terminals |= set(currentValue)
           currentValue = []
         else:
@@ -36,16 +35,17 @@ def readGrammatic():
         terminals |= set(currentValue)
       except:
         pass
-
+    
     for item in nonTerminals:
       if item in terminals:
         terminals.remove(item)
-
+    nonTerminals.remove(beginNonTerminal)
+    
     return grammatic
 
 def printGrammatic(grammatic):
   for item in grammatic:
-    print(item, ':', end=' ')
+    print(item, '->', end=' ')
     for rule in grammatic[item]:
       print(" ".join(rule), end=' | ')
     print()
@@ -249,6 +249,9 @@ def buildParsingTable(first, follow, items, dfa, terminals, nonTerminals, rules)
   # shift operations
   for tupl, value in dfa.items():
     if tupl[1] in terminals:
+      if actionTable[tupl[0]][tupl[1]] != 0:
+        print('not a valid grammar')
+        return (None, None)
       actionTable[tupl[0]][tupl[1]] = 's' + str(value)
 
   # reduce operations
@@ -262,6 +265,9 @@ def buildParsingTable(first, follow, items, dfa, terminals, nonTerminals, rules)
           for ruleKey, ruleValue in rules.items():
             if ruleValue == toSearch:
               for followItem in follow[key]:
+                if actionTable[dictKey][followItem] != 0:
+                  print('not a valid grammar')
+                  return (None, None)
                 actionTable[dictKey][followItem] = 'r' + str(ruleKey)
   
   # accept operations
@@ -320,11 +326,12 @@ firstSet = first(grammatic)
 followSet = follow(grammatic, firstSet)
 
 actionTable, gotoTable = buildParsingTable(firstSet, followSet, items, dfa, terminals, nonTerminals, rules)
-  
-printActionTable(actionTable)
-printGotoTable(gotoTable)
-print(parseInput(rules, actionTable, gotoTable, 'id * id + id $'))
-print(parseInput(rules, actionTable, gotoTable, '( id ) id $'))
-print(parseInput(rules, actionTable, gotoTable, '( id + id $'))
-print(parseInput(rules, actionTable, gotoTable, 'id ) + id $'))
-print(parseInput(rules, actionTable, gotoTable, '( id * id + id ) $'))
+if actionTable != None and gotoTable != None:
+  printActionTable(actionTable)
+  printGotoTable(gotoTable)
+  print(parseInput(rules, actionTable, gotoTable, 'c d c c d $'))
+  # print(parseInput(rules, actionTable, gotoTable, 'id * id + id $'))
+  # print(parseInput(rules, actionTable, gotoTable, '( id ) id $'))
+  # print(parseInput(rules, actionTable, gotoTable, '( id + id $'))
+  # print(parseInput(rules, actionTable, gotoTable, 'id ) + id $'))
+  # print(parseInput(rules, actionTable, gotoTable, '( id * id + id ) $'))
