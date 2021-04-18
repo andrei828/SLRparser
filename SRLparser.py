@@ -8,7 +8,6 @@ dfa = {}
 
 def readGrammatic():
   global terminals
-  global nonTerminals
   global beginNonTerminal
 
   grammatic = {}
@@ -49,6 +48,24 @@ def printGrammatic(grammatic):
     print(item, ':', end=' ')
     for rule in grammatic[item]:
       print(" ".join(rule), end=' | ')
+    print()
+
+def printGotoTable(table):
+  print('Goto table:')
+  print('\t', '\t'.join(nonTerminals))
+  for i in range(len(table)):
+    print(i, end='\t')
+    for val in table[i].values():
+      print(val, end='\t')
+    print()
+
+def printActionTable(table):
+  print('Action table:')
+  print('\t', '\t'.join(terminals))
+  for i in range(len(table)):
+    print(i, end='\t')
+    for val in table[i].values():
+      print(val, end='\t')
     print()
 
 def getFirst(grammatic, symbol, visited=set()):
@@ -186,23 +203,14 @@ def isItemPresent(currentItem, items):
           total += 1
       if total == len(currentList):
         return itemNum
-    # print(helper)
-  # print(found)
-  # print(searchList)
-  # print(helper)
-  # print('-----------------------')
+
   return found        
 
 def constructItems(grammatic):
-  global dfa
   firstItem = buildFirstItem(grammatic, beginNonTerminal)
   firstItem = closure(grammatic, firstItem)
   items = {0: firstItem}
   k = 1
-  # newItem = closure(grammatic, goto(items[0], '('))
-  # print(closure(grammatic, goto(items[0], '(')))
-  # print(isItemPresent(newItem, items))
-  # print(firstItem)
   while True:
     itemsListSize = len(items)
     tmp = []
@@ -223,22 +231,6 @@ def constructItems(grammatic):
               else:
                 dfa[(num, value[i + 1])] = isConnected
 
-
-  # itemsListSize = len(items)
-  # tmp = []
-  # beforeK = k
-  # for num, dictionary in items.items():
-  #   for key in dictionary:
-  #     for value in dictionary[key]:
-  #       for i in range(len(value) - 1):
-  #         if value[i] == '.':
-  #           newItem = closure(grammatic, goto(items[num], value[i + 1]))
-            
-  #           if not isItemPresent(newItem, items):
-  #             if newItem not in tmp:
-  #               # print('GOTO(', num, value[i + 1], ') ', newItem)
-  #               dfa[(num, value[i + 1])] = k
-  #               tmp.append(copy.deepcopy(newItem))
     k = beforeK
     for i in tmp:
       items[k] = i
@@ -247,49 +239,92 @@ def constructItems(grammatic):
     if itemsListSize == len(items):
       return items
 
-def printGotoTable(table):
-  print('\t', '\t'.join(nonTerminals))
-  for i in range(len(table)):
-    print(i, end='\t')
-    for val in table[i].values():
-      print(val, end='\t')
-    print()
-
-def printActionTable(table):
-  print('\t', '\t'.join(terminals))
-  for i in range(len(table)):
-    print(i, end='\t')
-    for val in table[i].values():
-      print(val, end='\t')
-    print()
-
-def buildParsingTable(first, follow, items, dfa, terminals, nonTerminals):
+def buildParsingTable(first, follow, items, dfa, terminals, nonTerminals, rules):
   gotoTable = [{i: 0 for i in nonTerminals} for _ in range(len(items))]
   actionTable = [{i: 0 for i in terminals} for _ in range(len(items))]
+
+  '''
+  Action Table
+  '''
+  # shift operations
   for tupl, value in dfa.items():
     if tupl[1] in terminals:
-      actionTable[tupl[0]][tupl[1]] = value
-  printActionTable(actionTable)
-  printGotoTable(gotoTable)
-  return gotoTable
+      actionTable[tupl[0]][tupl[1]] = 's' + str(value)
+
+  # reduce operations
+  for dictKey, dictValues in items.items():
+    for key, matrix in dictValues.items():
+      for value in matrix:
+        if value[-1] == '.':
+          valCopy = value[:]
+          valCopy.pop()
+          toSearch = {key: valCopy}
+          for ruleKey, ruleValue in rules.items():
+            if ruleValue == toSearch:
+              for followItem in follow[key]:
+                actionTable[dictKey][followItem] = 'r' + str(ruleKey)
+  
+  # accept operations
+  
+  for dictKey, dictValues in items.items():
+    for key, matrix in dictValues.items():
+      for value in matrix:
+        if key == beginNonTerminal and value[-1] == '.':
+          actionTable[dictKey]['$'] = 'acc'
+  # actionTable[1]['$'] = 'acc' easier this way   
+
+  '''
+  Goto Table
+  '''
+  for tupl, value in dfa.items():
+    if tupl[1] in nonTerminals:
+      gotoTable[tupl[0]][tupl[1]] = value
+
+  return actionTable, gotoTable
+
+
+def parseInput(rules, actionTable, gotoTable, inputValue, log=False):
+  state = ([0], inputValue.split(' '))
+  while True:
+    currentState, currentValue = state[0][-1], state[1][0]
+    cell = actionTable[currentState][currentValue]
+    if log:
+      print('Stack:', ' '.join([str(i) for i in state[0]]), '\nInput:', ''.join(state[1]), end='\n\n')
+    if cell == 0:
+      return 'Input' + inputValue + ' NOT accepted'
+    elif cell == 'acc':
+      return 'Input' + inputValue + 'accepted'
+    # shift operation
+    elif cell[0] == 's':
+      number = int(cell[1:])
+      state[0].append(state[1].pop(0))
+      state[0].append(number)
+    # reduce operation
+    elif cell[0] == 'r':
+      number = int(cell[1:])
+      for _ in range(len(list(rules[number].values())[0])):
+        state[0].pop()
+        state[0].pop()
+      smr = state[0][-1]
+      state[0].append(list(rules[number].keys())[0])
+      state[0].append(gotoTable[smr][state[0][-1]])
+      
 
 grammatic = readGrammatic()
-# print(grammatic)
 printGrammatic(grammatic)
-# print(setRules(grammatic))
 
-# print(terminals) 
-print()
+rules = setRules(grammatic)
 items = constructItems(grammatic)
-# print(items)
-print('DFA:')
-print(dfa)
-print()
-# for key, value in dfa.items():
-#   print(value, items[value])
-# print()
 
 firstSet = first(grammatic)
 followSet = follow(grammatic, firstSet)
 
-print(buildParsingTable(firstSet, followSet, items, dfa, terminals, nonTerminals))
+actionTable, gotoTable = buildParsingTable(firstSet, followSet, items, dfa, terminals, nonTerminals, rules)
+  
+printActionTable(actionTable)
+printGotoTable(gotoTable)
+print(parseInput(rules, actionTable, gotoTable, 'id * id + id $'))
+print(parseInput(rules, actionTable, gotoTable, '( id ) id $'))
+print(parseInput(rules, actionTable, gotoTable, '( id + id $'))
+print(parseInput(rules, actionTable, gotoTable, 'id ) + id $'))
+print(parseInput(rules, actionTable, gotoTable, '( id * id + id ) $'))
