@@ -11,7 +11,7 @@ def readGrammatic():
   global beginNonTerminal
 
   grammatic = {}
-  with open('grammatic2.txt', 'r') as inputFile:
+  with open('grammatic4.txt', 'r') as inputFile:
     while inputFile:
       tmp = inputFile.readline().split('\n')[0].split(' ')
       if tmp == ['']:
@@ -40,7 +40,8 @@ def readGrammatic():
       if item in terminals:
         terminals.remove(item)
     nonTerminals.remove(beginNonTerminal)
-    
+    if '@' in terminals:
+      terminals.remove('@')
     return grammatic
 
 def printGrammatic(grammatic):
@@ -79,7 +80,18 @@ def getFirst(grammatic, symbol, visited=set()):
         if value[0] not in grammatic:
           result.add(value[0])
         elif value[0] not in visited:
-          result |= getFirst(grammatic, value[0], visited)
+          tmp = getFirst(grammatic, value[0], visited)
+          totalEps = 0
+          for i in value[1:]:
+            if '@' in tmp:
+              totalEps += 1
+              tmp |= getFirst(grammatic, i, copy.deepcopy(visited))
+            else:
+              break
+          if totalEps < len(value) and '@' in tmp:
+            tmp.remove('@')
+          result |= tmp
+          # result |= getFirst(grammatic, value[0], visited)
     return result
 
 def first(grammatic):
@@ -89,19 +101,46 @@ def first(grammatic):
 def follow(grammatic, first):
   flw = {item: set() for item in grammatic}
   flw[beginNonTerminal].add('$')
-  for key, values in grammatic.items():
-    for value in values:
-      for i in range(len(value) - 1):
-        if value[i] in grammatic:
-          if value[i + 1] in first:
-            flw[value[i]] |= first[value[i + 1]]
-          else:
-            flw[value[i]].add(value[i + 1])
+  for _ in range(2):
+    for key, values in grammatic.items():
+      for value in values:
+        for i in range(len(value) - 1):
+          if value[i] in grammatic:
+            if value[i + 1] in first:
+              tmp = copy.deepcopy(first[value[i + 1]])
+              if '@' in tmp:
+                tmp.remove('@')
+              flw[value[i]] |= tmp
+            else:
+              flw[value[i]].add(value[i + 1])
+        # if len(value) >= 2 and value[-1] != '@':
+        #   if value[-2] in grammatic:
+        #     if value[-1] in first:
+        #       tmp = copy.deepcopy(first[value[-1]])
+        #       if '@' in tmp:
+        #         tmp.remove('@')
+        #       flw[value[-2]] |= tmp
+        #     else:
+        #       flw[value[-2]].add(value[-1])
+          # if value[i] in grammatic:
+          #   if value[i + 1] in first:
+          #     flw[value[i]] |= first[value[i + 1]]
+          #   else:
+          #     flw[value[i]].add(value[i + 1])
 
-  for key, values in grammatic.items():
-    for value in values:
-      if value[-1] in flw:
-        flw[value[-1]] |= flw[key]
+    for key, values in grammatic.items():
+      for value in values:
+        if value[-1] in flw:
+          tmp = copy.deepcopy(flw[key])
+          if '@' in flw[key]:
+            tmp.remove('@')
+          flw[value[-1]] |= tmp
+
+    for key, values in grammatic.items():
+      for value in values:
+        if len(value) > 2 and value[-1] in first and '@' in first[value[-1]] and value[-2] in grammatic:
+          flw[value[-2]] |= flw[key]
+
   return flw  
 
 def buildFirstItem(grammatic, key):
@@ -219,7 +258,7 @@ def constructItems(grammatic):
       for key in dictionary:
         for value in dictionary[key]:
           for i in range(len(value) - 1):
-            if value[i] == '.':
+            if value[i] == '.' and value[i + 1] != '@':
               
               newItem = closure(grammatic, goto(items[num], value[i + 1]))
               # print(num, value[i + 1], isItemPresent(newItem, items))
@@ -258,17 +297,23 @@ def buildParsingTable(first, follow, items, dfa, terminals, nonTerminals, rules)
   for dictKey, dictValues in items.items():
     for key, matrix in dictValues.items():
       for value in matrix:
-        if value[-1] == '.':
-          valCopy = value[:]
-          valCopy.pop()
-          toSearch = {key: valCopy}
+        if value[-1] == '.' or (len(value) == 2 and value == ['.', '@']):
+          toSearch = None
+          if len(value) == 2 and value == ['.', '@']:
+            toSearch = {key: ['@']}
+          else:
+            valCopy = value[:]
+            valCopy.pop()
+            toSearch = {key: valCopy}
+          
           for ruleKey, ruleValue in rules.items():
             if ruleValue == toSearch:
               for followItem in follow[key]:
-                if actionTable[dictKey][followItem] != 0:
-                  print('not a valid grammar')
-                  return (None, None)
-                actionTable[dictKey][followItem] = 'r' + str(ruleKey)
+                if followItem != '@':
+                  if actionTable[dictKey][followItem] != 0:
+                    print('not a valid grammar')
+                    return (None, None)
+                  actionTable[dictKey][followItem] = 'r' + str(ruleKey)
   
   # accept operations
   
@@ -297,9 +342,9 @@ def parseInput(rules, actionTable, gotoTable, inputValue, log=False):
     if log:
       print('Stack:', ' '.join([str(i) for i in state[0]]), '\nInput:', ''.join(state[1]), end='\n\n')
     if cell == 0:
-      return 'Input' + inputValue + ' NOT accepted'
+      return 'Input ' + inputValue + ' NOT accepted'
     elif cell == 'acc':
-      return 'Input' + inputValue + 'accepted'
+      return 'Input ' + inputValue + ' raccepted'
     # shift operation
     elif cell[0] == 's':
       number = int(cell[1:])
@@ -308,12 +353,18 @@ def parseInput(rules, actionTable, gotoTable, inputValue, log=False):
     # reduce operation
     elif cell[0] == 'r':
       number = int(cell[1:])
-      for _ in range(len(list(rules[number].values())[0])):
-        state[0].pop()
-        state[0].pop()
-      smr = state[0][-1]
-      state[0].append(list(rules[number].keys())[0])
-      state[0].append(gotoTable[smr][state[0][-1]])
+      numberOfItems = list(rules[number].values())[0]
+      if len(numberOfItems) == 1 and numberOfItems == ['@']:
+        smr = state[0][-1]
+        state[0].append(list(rules[number].keys())[0])
+        state[0].append(gotoTable[smr][state[0][-1]])
+      else:
+        for _ in range(len(numberOfItems)):
+          state[0].pop()
+          state[0].pop()
+        smr = state[0][-1]
+        state[0].append(list(rules[number].keys())[0])
+        state[0].append(gotoTable[smr][state[0][-1]])
       
 
 grammatic = readGrammatic()
@@ -325,11 +376,16 @@ items = constructItems(grammatic)
 firstSet = first(grammatic)
 followSet = follow(grammatic, firstSet)
 
+print('First')
+print(firstSet)
+print('Follow')
+print(followSet)
 actionTable, gotoTable = buildParsingTable(firstSet, followSet, items, dfa, terminals, nonTerminals, rules)
 if actionTable != None and gotoTable != None:
   printActionTable(actionTable)
   printGotoTable(gotoTable)
-  print(parseInput(rules, actionTable, gotoTable, 'c d c c d $'))
+  print(parseInput(rules, actionTable, gotoTable, 'n + ( n ) $'))
+  # print(parseInput(rules, actionTable, gotoTable, 'c d c c d $'))
   # print(parseInput(rules, actionTable, gotoTable, 'id * id + id $'))
   # print(parseInput(rules, actionTable, gotoTable, '( id ) id $'))
   # print(parseInput(rules, actionTable, gotoTable, '( id + id $'))
